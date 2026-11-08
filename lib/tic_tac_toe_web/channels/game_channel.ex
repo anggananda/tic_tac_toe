@@ -59,4 +59,13 @@ defmodule TicTacToeWeb.GameChannel do
     push(socket, "game_reset", message)
     {:noreply, socket}
   end
+
+  @impl true
+  def terminate(_reason, socket) do
+    if socket.assigns.symbol do
+      TicTacToe.Game.leave(socket.assigns.symbol)
+    end
+
+    :ok
+  end
 end

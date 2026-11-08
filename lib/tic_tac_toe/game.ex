@@ -76,6 +76,14 @@ defmodule TicTacToe.Game do
     GenServer.call({:global, :tic_tac_toe_game}, :reset)
   end
 
+  @doc """
+  Leaves the game as `symbol` (`:x` or `:o`), freeing the player slot so
+  another client can join. Safe to call when a WebSocket disconnects.
+  """
+  def leave(symbol) when symbol in [:x, :o] do
+    GenServer.call({:global, :tic_tac_toe_game}, {:leave, symbol})
+  end
+
   ### GenServer callbacks
 
   @impl true
@@ -127,6 +135,11 @@ defmodule TicTacToe.Game do
   @impl true
   def handle_call(:reset, _from, _state) do
     {:reply, :ok, @default_state}
+  end
+
+  @impl true
+  def handle_call({:leave, symbol}, _from, state) do
+    {:reply, :ok, %{state | players: %{state.players | symbol => nil}}}
   end
 
   ### Internal helpers
