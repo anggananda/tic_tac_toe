@@ -1,0 +1,175 @@
+<Layouts.app flash={@flash}>
+  <div class="flex-1 flex flex-col items-center justify-center pt-4 px-4 sm:px-6 text-center min-h-0">
+    <div class="inline-flex items-center gap-2 shrink-0 text-sm font-semibold text-base-content/70 mb-1">
+      <span>Giliran:</span>
+      <span
+        id="turn-indicator"
+        class="inline-block w-8 h-8 shrink-0 rounded-xl font-bold flex items-center justify-center text-[10px] leading-none shadow-sm"
+      >
+        X
+      </span>
+    </div>
+
+    <div id="status-message" class="mt-2 shrink-0 text-sm text-base-content/60 min-h-[1.25rem]">
+    </div>
+
+    <div class="mt-6 shrink-0 grid grid-cols-3 gap-2 w-[300px] h-[300px] sm:w-[380px] sm:h-[380px]">
+      <%= for cell <- 0..8 do %>
+        <button
+          id={"cell-#{cell}"}
+          type="button"
+          class="w-full h-full rounded-2xl bg-base-200 hover:bg-base-300 active:scale-95 transition-all duration-150 border border-base-300 focus:outline-none"
+          disabled={cell_disabled?(cell, @board)}
+          data-cell={cell}
+        >
+          {cell_symbol(cell, @board)}
+        </button>
+      <% end %>
+    </div>
+
+    <div class="mt-6 shrink-0 flex flex-col sm:flex-row items-center justify-center gap-3">
+      <button type="button" id="reset-button" class="btn btn-outline px-6 py-2 text-sm">
+        Ulangi Permainan
+      </button>
+    </div>
+
+    <div class="mt-4 shrink-0 text-xs text-base-content/40">
+      Real-time melalui Phoenix Channels
+    </div>
+  </div>
+</Layouts.app>
+
+<script>
+  // Phoenix Channel client for real-time moves.
+  const setupGame = () => {
+    if (!window.Phoenix?.Socket) {
+      requestAnimationFrame(setupGame)
+      return
+    }
+
+    const socket = new window.Phoenix.Socket("/socket", {params: {}})
+    socket.connect()
+
+    const channel = socket.channel("games:default", {})
+
+    const WIN_LINES = [
+      [0, 1, 2],
+      [3, 4, 5],
+      [6, 7, 8],
+      [0, 3, 6],
+      [1, 4, 7],
+      [2, 5, 8],
+      [0, 4, 8],
+      [2, 4, 6]
+    ]
+
+    let mySymbol = null
+
+    const turnEl = document.getElementById("turn-indicator")
+    const statusEl = document.getElementById("status-message")
+
+    channel.join()
+      .receive("ok", resp => {
+        mySymbol = resp.symbol
+        console.log("Joined channel as", resp.symbol)
+        turnEl.textContent = resp.symbol
+        turnEl.className =
+          resp.symbol === "X"
+            ? "inline-block w-8 h-8 shrink-0 rounded-xl font-bold flex items-center justify-center text-[10px] leading-none shadow-sm ttt-symbol-x"
+            : "inline-block w-8 h-8 shrink-0 rounded-xl font-bold flex items-center justify-center text-[10px] leading-none shadow-sm ttt-symbol-o"
+        statusEl.textContent =
+          resp.symbol === "X"
+            ? "Anda adalah pemain X. Tunggu giliran Anda."
+            : "Anda adalah pemain O. Tunggu giliran lawan."
+      })
+      .receive("error", resp => {
+        console.log("Failed to join channel", resp)
+        statusEl.textContent = "Gagal bergabung: " + (resp.reason || "penuh")
+      })
+
+    channel.on("game_move", msg => {
+      renderBoard(msg.board)
+      updateTurn(msg.turn)
+      updateStatus(msg.winner, msg.last_move)
+      if (msg.winner) {
+        if (msg.winner !== "draw") {
+          highlightWin(msg.last_move.symbol, msg.board)
+        }
+        disableBoard()
+      }
+    })
+
+    channel.on("game_reset", () => {
+      renderBoard(Array(9).fill(null))
+      updateTurn("X")
+      statusEl.textContent = "Permainan diulang. Pemain X mulai."
+      enableBoard()
+    })
+
+    document.querySelectorAll("button[data-cell]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const cell = parseInt(btn.getAttribute("data-cell"))
+        if (mySymbol && !btn.disabled) {
+          channel.push("make_move", {position: cell})
+        }
+      })
+    })
+
+    document.getElementById("reset-button").addEventListener("click", () => {
+      channel.push("reset_game", {})
+    })
+
+    function renderBoard(board) {
+      board.forEach((cell, index) => {
+        const btn = document.getElementById("cell-" + index)
+        const sym = cell || ""
+        btn.textContent = sym
+        btn.disabled = cell !== null
+        btn.classList.remove("ttt-symbol-x", "ttt-symbol-o", "win")
+        if (sym === "X") btn.classList.add("ttt-symbol-x")
+        else if (sym === "O") btn.classList.add("ttt-symbol-o")
+      })
+    }
+
+    function updateTurn(turn) {
+      turnEl.textContent = turn
+      turnEl.className =
+        turn === "X"
+          ? "inline-block w-8 h-8 shrink-0 rounded-xl font-bold flex items-center justify-center text-[10px] leading-none shadow-sm ttt-symbol-x"
+          : "inline-block w-8 h-8 shrink-0 rounded-xl font-bold flex items-center justify-center text-[10px] leading-none shadow-sm ttt-symbol-o"
+    }
+
+    function updateStatus(winner, lastMove) {
+      if (winner === "draw") {
+        statusEl.textContent = "Permainan seri!"
+      } else if (winner) {
+        statusEl.textContent =
+          "Pemenang: " + winner + " (langkah terakhir: " + lastMove.symbol + " di kotak " + lastMove.position + ")"
+      } else {
+        const nextTurn = lastMove.symbol === "X" ? "O" : "X"
+        statusEl.textContent = "Giliran pemain " + nextTurn
+      }
+    }
+
+    function highlightWin(symbol, board) {
+      if (!symbol || symbol === "draw") return
+      for (const line of WIN_LINES) {
+        const [a, b, c] = line
+        if (board[a] === symbol && board[b] === symbol && board[c] === symbol) {
+          line.forEach(i => document.getElementById("cell-" + i).classList.add("win"))
+          break
+        }
+      }
+    }
+
+    function disableBoard() {
+      document.querySelectorAll("button[data-cell]").forEach(btn => (btn.disabled = true))
+    }
+
+    function enableBoard() {
+      document.querySelectorAll("button[data-cell]").forEach(btn => (btn.disabled = false))
+    }
+  }
+
+  setupGame()
+</script>
