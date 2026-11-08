@@ -7,6 +7,10 @@ defmodule TicTacToe.GameTest do
       {:error, {:already_started, _pid}} -> :ok
     end
 
+    # Clean slate: release any leftover player slots from concurrent tests,
+    # then reset board/turn/winner while keeping the GenServer alive.
+    TicTacToe.Game.leave(:x)
+    TicTacToe.Game.leave(:o)
     TicTacToe.Game.reset()
     :ok
   end

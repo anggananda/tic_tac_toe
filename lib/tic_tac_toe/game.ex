@@ -133,8 +133,11 @@ defmodule TicTacToe.Game do
   end
 
   @impl true
-  def handle_call(:reset, _from, _state) do
-    {:reply, :ok, @default_state}
+  def handle_call(:reset, _from, state) do
+    # Reset board, turn, and winner, but keep players so connected clients
+    # can continue playing without re-joining.
+    new_state = %{state | board: List.duplicate(nil, @board_size), turn: :x, winner: nil}
+    {:reply, :ok, new_state}
   end
 
   @impl true

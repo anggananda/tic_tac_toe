@@ -7,6 +7,8 @@ defmodule TicTacToeWeb.GameChannelTest do
       {:error, {:already_started, _pid}} -> :ok
     end
 
+    TicTacToe.Game.leave(:x)
+    TicTacToe.Game.leave(:o)
     TicTacToe.Game.reset()
     :ok
   end
