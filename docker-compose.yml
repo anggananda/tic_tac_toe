@@ -1,0 +1,79 @@
+# =============================================================================
+# Docker Compose for Tic-Tac-Toe — Distributed Multi-Node
+#
+# This file runs TWO Erlang nodes (node-a and node-b) inside Docker on the same
+# machine. Each container is an independent BEAM node that joins the same
+# cluster, so you can test distributed tic-tac-toe locally:
+#
+#   - Open http://localhost:4000/game  → plays on node-a
+#   - Open http://localhost:4001/game  → plays on node-b
+#   - Moves made on one node appear in real-time on the other.
+#
+# To run across TWO laptops:
+#   1. Build the image on each laptop (or push to a registry).
+#   2. On laptop A, set NODE_NAME=tic@<ip-a> and CLUSTER_NODES=tic@<ip-b>.
+#   3. On laptop B, set NODE_NAME=tic@<ip-b> and CLUSTER_NODES=tic@<ip-a>.
+#   4. Make sure both laptops can reach each other on ports 4369 and 9100-9110.
+# =============================================================================
+
+name: tic-tac-toe
+
+services:
+  # -------------------------------------------------------------------------
+  # Node A — first Erlang node in the cluster
+  # -------------------------------------------------------------------------
+  node-a:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tic-node-a
+    hostname: node-a
+    environment:
+      - MIX_ENV=prod
+      - PHX_SERVER=true
+      - PORT=4000
+      - SECRET_KEY_BASE=${SECRET_KEY_BASE}
+      - TIC_TAC_TOE_NODE_NAME=tic@node-a
+      - TIC_TAC_TOE_COOKIE=${TIC_TAC_TOE_COOKIE}
+      - TIC_TAC_TOE_CLUSTER_NODES=tic@node-b
+    ports:
+      - "4000:4000"   # HTTP for node-a
+      - "4369:4369"   # EPMD for node-a
+      - "9100:9100"   # Erlang distribution (node-a)
+    networks:
+      - tic-net
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # Node B — second Erlang node in the cluster
+  # -------------------------------------------------------------------------
+  node-b:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tic-node-b
+    hostname: node-b
+    environment:
+      - MIX_ENV=prod
+      - PHX_SERVER=true
+      - PORT=4000
+      - SECRET_KEY_BASE=${SECRET_KEY_BASE}
+      - TIC_TAC_TOE_NODE_NAME=tic@node-b
+      - TIC_TAC_TOE_COOKIE=${TIC_TAC_TOE_COOKIE}
+      - TIC_TAC_TOE_CLUSTER_NODES=tic@node-a
+    ports:
+      - "4001:4000"   # HTTP for node-b (mapped to 4001 on host)
+      - "4370:4369"   # EPMD for node-b (mapped to 4370 on host)
+      - "9101:9100"   # Erlang distribution (node-b)
+    networks:
+      - tic-net
+    restart: unless-stopped
+    depends_on:
+      - node-a
+
+# -------------------------------------------------------------------------
+# Docker network so containers can resolve each other by name
+# -------------------------------------------------------------------------
+networks:
+  tic-net:
+    driver: bridge
